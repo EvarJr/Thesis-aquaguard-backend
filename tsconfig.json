@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowSyntheticDefaultImports": true,
+
+    // ✅ Important alias & type support
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["resources/js/*"],
+      "@lib/*": ["resources/js/lib/*"] // 👈 Added alias for echo.ts
+    },
+    "types": ["node", "vite/client"] // 👈 For process, import.meta, etc.
+  },
+  "include": ["resources/js", "vite.config.ts", "vite.config.js"]
+}
