@@ -5,10 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\MLModel;
 use App\Models\SystemSetting;
-use App\Models\Pipeline; // ✅ Imported Pipeline
+use App\Models\Pipeline;
 use Illuminate\Http\Request;
 use Symfony\Component\Process\Process;
 use Illuminate\Support\Facades\Log;
+use App\Helpers\PipelineMapper;
 
 class MlModelController extends Controller
 {
@@ -25,10 +26,7 @@ class MlModelController extends Controller
 
     public function show()
     {
-        // Get the currently ACTIVE model
         $activeModel = MLModel::where('status', 'ACTIVE')->first();
-
-        // If no active model, try to get the latest TRAINED model as fallback
         if (!$activeModel) {
             $activeModel = MLModel::where('status', 'TRAINED')->latest('created_at')->first();
         }
@@ -77,86 +75,106 @@ class MlModelController extends Controller
 
     public function activate($id)
     {
-        // Deactivate all
         MLModel::query()->update(['status' => 'TRAINED', 'is_active' => false]);
-        
-        // Activate selected
         $model = MLModel::findOrFail($id);
         $model->update(['status' => 'ACTIVE', 'is_active' => true]);
         
         return response()->json(['status' => 'success', 'message' => "v{$model->version} Activated"]);
     }
 
-    /**
-     * Triggered by the "Start Training" button in Frontend
-     */
     public function train(Request $request)
     {
         return $this->executeRetraining('Manual Admin Trigger');
     }
 
-    /**
-     * Triggered via API route for testing
-     */
     public function retrainWithGA(Request $request)
     {
         return $this->executeRetraining('Manual API Trigger');
     }
 
-    /**
-     * Core Logic to Run Python Script in Background
-     */
     public function executeRetraining($triggeredBy = 'Automatic')
     {
+        // 1. Check if already training
         $isTraining = MLModel::where('status', 'TRAINING')->exists();
         if ($isTraining) {
             return response()->json(['status' => 'skipped', 'message' => 'Training already in progress.']);
         }
 
-        // 1. Define Paths
+        // 2. Setup Paths
         $scriptPath = base_path('app/ml/train_with_ga.py');
-        $pythonExe = base_path('venv\Scripts\python.exe'); // Windows Path
+        $isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+        $pythonExe = base_path($isWindows ? 'venv\Scripts\python.exe' : 'venv/bin/python');
+        
+        if (!file_exists($pythonExe)) {
+             // Fallback for global python if venv not found
+             $pythonExe = 'python'; 
+        }
         
         if (!file_exists($scriptPath)) {
             return response()->json(['status' => 'error', 'message' => 'Script missing at: ' . $scriptPath], 404);
         }
 
-        // 2. Create Database Entry
-        $currentVersion = ((float) MLModel::max('version') ?? 1.0);
-        $newVersion = round($currentVersion + 0.1, 1);
+        // 3. Cleanup Old Temp Files
+        $filesToDelete = [
+            storage_path('app/ml_models/train_progress.json'),
+            storage_path('app/ml_models/train_result.json')
+        ];
+        foreach ($filesToDelete as $file) {
+            if (file_exists($file)) @unlink($file);
+        }
 
+        // 4. Calculate Version
+        $currentVersion = ((float) MLModel::max('version') ?? 1.0);
+        $newVersionVal = round($currentVersion + 0.1, 1);
+        
+        // ✅ DEFINED HERE: used for filenames and command argument
+        $versionTag = "v" . str_replace('.', '_', (string)$newVersionVal); 
+
+        // 5. Create DB Record
         MLModel::create([
             'name' => 'GA Optimized Model',
-            'version' => $newVersion,
+            'version' => $newVersionVal,
             'description' => "Retrained via {$triggeredBy}",
             'status' => 'TRAINING',
             'is_active' => false,
             'accuracy' => 0,
-            'file_path_detect' => 'storage/app/ml_models/rf_leak_detect_ga.joblib',
-            'file_path_locate' => 'storage/app/ml_models/rf_leak_locate_ga.joblib',
+            'file_path_detect' => "storage/app/ml_models/rf_leak_detect_{$versionTag}.joblib",
+            'file_path_locate' => "storage/app/ml_models/rf_leak_locate_{$versionTag}.joblib",
             'file_path_features' => 'storage/app/ml_models/feature_cols.joblib',
         ]);
 
-        // 3. Execute Python (Background Mode)
-        try {
-            $cmd = "\"{$pythonExe}\" \"{$scriptPath}\"";
+        // Initialize Progress File
+        $progPath = storage_path('app/ml_models/train_progress.json');
+        file_put_contents($progPath, json_encode(['progress' => 0, 'status' => 'starting', 'message' => 'Initializing Python...']));
 
-            if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-                pclose(popen("start /B " . $cmd, "r"));
+        // 6. Execute Python (Background Mode)
+        try {
+            // ✅ CMD CONSTRUCTION
+            // We pass the python executable, the script path, and the version tag
+            $cmd = "\"{$pythonExe}\" \"{$scriptPath}\" \"{$versionTag}\"";
+
+            if ($isWindows) {
+                // Windows Background: start /B "" command
+                pclose(popen("start /B \"\" " . $cmd, "r"));
             } else {
+                // Linux Background: command > /dev/null &
                 exec($cmd . " > /dev/null 2>&1 &");
             }
 
-            Log::info("🧬 GA Retraining STARTED (v{$newVersion}) - Trigger: {$triggeredBy}");
+            Log::info("🧬 GA Retraining STARTED (v{$newVersionVal}) tag: {$versionTag}");
 
             return response()->json([
                 'status' => 'in_progress',
                 'message' => 'Genetic Algorithm retraining started.',
-                'new_version' => $newVersion
+                'new_version' => $newVersionVal
             ]);
 
         } catch (\Exception $e) {
             Log::error("GA Retraining Launch Failed: " . $e->getMessage());
+            
+            // Mark DB as failed
+            MLModel::where('status', 'TRAINING')->update(['status' => 'FAILED']);
+            
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
     }
@@ -169,11 +187,9 @@ class MlModelController extends Controller
         if (file_exists($progressPath)) {
             $progressData = json_decode(file_get_contents($progressPath), true);
 
-            // Check completion
             if (isset($progressData['progress']) && $progressData['progress'] >= 100) {
                 if (file_exists($resultPath)) {
                     $result = json_decode(file_get_contents($resultPath), true);
-
                     $trainingModel = MLModel::where('status', 'TRAINING')->latest()->first();
                     if ($trainingModel) {
                         $trainingModel->update([
@@ -182,13 +198,7 @@ class MlModelController extends Controller
                             'is_active' => false
                         ]);
                     }
-
-                    return response()->json([
-                        'progress' => 100,
-                        'status' => 'completed',
-                        'message' => 'Training successfully finished.',
-                        'result' => $result
-                    ]);
+                    return response()->json(['progress' => 100, 'status' => 'completed', 'message' => 'Training finished.']);
                 }
             }
             return response()->json($progressData);
@@ -204,89 +214,94 @@ class MlModelController extends Controller
     public function collectLabeledData(Request $request)
     {
         try {
-            $data = $request->all();
-            
-            // 1. Validate Input
-            $label = $request->input('manual_label'); 
-            $pipelineId = $request->input('manual_pipeline_id'); 
-            
-            $isLeak = ($label === 'leak') ? 1 : 0;
-            $leakLoc = 0;
+            $input = $request->all();
+            Log::info("🧠 HITL Raw Input:", $input); // Debug log
 
-            // 2. LOGIC: Map Pipeline ID to ML Integer Class
-            if ($isLeak && $pipelineId) {
-                $pipeline = Pipeline::find($pipelineId);
-                
-                if ($pipeline) {
-                    if ($pipeline->from === 'S001') $leakLoc = 1;
-                    elseif ($pipeline->from === 'S002') $leakLoc = 2;
-                    elseif ($pipeline->from === 'S003') $leakLoc = 3;
-                    else $leakLoc = 1;
-                } else {
-                    Log::warning("HitL: Pipeline ID $pipelineId not found in DB. Defaulting loc to 0.");
-                }
+            // 1. SMART DATA EXTRACTION
+            // Sometimes data is at root, sometimes inside 'data' wrapper
+            $sensorSource = null;
+
+            if (isset($input['f_main'])) {
+                $sensorSource = $input;
+            } elseif (isset($input['data']) && isset($input['data']['f_main'])) {
+                $sensorSource = $input['data'];
             }
 
-            // 3. Prepare Row
+            // ❌ Validation: If we didn't find sensor data, STOP.
+            if (!$sensorSource) {
+                Log::error("❌ HITL Error: No sensor data found in payload.");
+                return response()->json(['status' => 'error', 'message' => 'Invalid payload structure'], 400);
+            }
+
+            // 2. Extract Labels
+            $label = $input['manual_label'] ?? null;
+            $pipelineId = $input['manual_pipeline_id'] ?? null;
+            
+            $isLeak = ($label === 'leak') ? 1 : 0;
+            
+            // 3. Map Pipeline ID
+            $leakLoc = 0;
+            if ($isLeak && $pipelineId) {
+                // Ensure Mapper is imported at top: use App\Helpers\PipelineMapper;
+                $leakLoc = PipelineMapper::getLabel($pipelineId);
+                if ($leakLoc == 0) Log::warning("⚠️ Pipeline ID '$pipelineId' not found in Map.");
+            }
+
+            // 4. Prepare Row (Explicit Float Casting)
             $row = [
-                $data['f_main'] ?? 0, $data['f_1'] ?? 0, $data['f_2'] ?? 0, $data['f_3'] ?? 0,
-                $data['p_main'] ?? 0, $data['p_dma1'] ?? 0, $data['p_dma2'] ?? 0, $data['p_dma3'] ?? 0,
-                $data['pump_on'] ?? 1, $data['comp_on'] ?? 0,
-                $data['s1'] ?? 0, $data['s2'] ?? 0, $data['s3'] ?? 0,
-                $data['solenoid_active'] ?? 0,
+                (float) ($sensorSource['f_main'] ?? 0),
+                (float) ($sensorSource['f_1'] ?? 0),
+                (float) ($sensorSource['f_2'] ?? 0),
+                (float) ($sensorSource['f_3'] ?? 0),
+                (float) ($sensorSource['p_main'] ?? 0),
+                (float) ($sensorSource['p_dma1'] ?? 0),
+                (float) ($sensorSource['p_dma2'] ?? 0),
+                (float) ($sensorSource['p_dma3'] ?? 0),
+                (int)   ($sensorSource['pump_on'] ?? 1),
+                (int)   ($sensorSource['comp_on'] ?? 0),
+                (int)   ($sensorSource['s1'] ?? 0),
+                (int)   ($sensorSource['s2'] ?? 0),
+                (int)   ($sensorSource['s3'] ?? 0),
+                (int)   ($sensorSource['solenoid_active'] ?? 0),
                 $isLeak,
                 $leakLoc
             ];
 
-            // 4. Write to the PRIORITY CSV (With Safety Checks)
+            // 5. Write to CSV (With Locking)
             $csvPath = storage_path('app/ml_models/validated_alerts.csv');
-            
             if (!file_exists(dirname($csvPath))) mkdir(dirname($csvPath), 0777, true);
-
-            // ✅ ROBUST RETRY LOGIC FOR WINDOWS FILE LOCKING
-            $fp = false;
+            
+            $fp = false; 
             $attempts = 0;
-            
-            while (!$fp && $attempts < 10) {
-                $fp = @fopen($csvPath, 'a'); // Suppress warning with @
-                if (!$fp) {
-                    usleep(100000); // Wait 0.1 seconds
-                    $attempts++;
-                }
+            // Retry loop
+            while (!$fp && $attempts < 10) { 
+                $fp = @fopen($csvPath, 'a'); 
+                if (!$fp) { usleep(100000); $attempts++; } 
             }
             
-            if ($fp === false) {
-                throw new \Exception("Could not open CSV file. It might be locked by another process.");
-            }
-
-            // Add header if new
-            if (filesize($csvPath) == 0) {
-                fputcsv($fp, [
-                    'f_main', 'f_1', 'f_2', 'f_3',
-                    'p_main', 'p_dma1', 'p_dma2', 'p_dma3',
-                    'pump_on', 'comp_on', 's1', 's2', 's3', 
-                    'solenoid_active', 
-                    'leak_detected', 'leak_location'
-                ]);
-            }
-
-            // Write 10 times (Priority)
-            if (flock($fp, LOCK_EX)) { 
-                for ($i = 0; $i < 10; $i++) { 
-                    fputcsv($fp, $row);
+            if ($fp) {
+                // Header if new
+                if (filesize($csvPath) == 0) {
+                    fputcsv($fp, ['f_main','f_1','f_2','f_3','p_main','p_dma1','p_dma2','p_dma3','pump_on','comp_on','s1','s2','s3','solenoid_active','leak_detected','leak_location']);
                 }
-                flock($fp, LOCK_UN); 
+
+                // Write 10 times (Priority)
+                if (flock($fp, LOCK_EX)) { 
+                    for ($i = 0; $i < 10; $i++) fputcsv($fp, $row);
+                    flock($fp, LOCK_UN); 
+                }
+                fclose($fp);
+                
+                Log::info("✅ HITL Saved: P_Main=" . $row[4] . " | Loc=" . $row[15]);
             } else {
-                throw new \Exception("Could not lock file for writing.");
+                throw new \Exception("Could not open CSV file (Locked).");
             }
-            
-            fclose($fp);
 
             return response()->json(['message' => 'Data labeled and saved successfully.']);
 
         } catch (\Exception $e) {
             Log::error("🔥 Manual Data Collection Failed: " . $e->getMessage());
-            return response()->json(['status' => 'error', 'message' => 'Server Error: ' . $e->getMessage()], 500);
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
     }
 }

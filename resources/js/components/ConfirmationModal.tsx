@@ -1,5 +1,4 @@
 import React from 'react';
-import { useTranslation } from '@/i18n';
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -9,32 +8,51 @@ interface ConfirmationModalProps {
   message: string;
 }
 
-const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ isOpen, onClose, onConfirm, title, message }) => {
-  const { t } = useTranslation();
-
+const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  title,
+  message,
+}) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose} aria-modal="true" role="dialog">
-      <div className="bg-brand-light rounded-lg shadow-xl w-full max-w-md transform transition-all" onClick={e => e.stopPropagation()}>
-        <div className="p-6">
-          <h3 className="text-lg font-bold text-brand-dark">{title}</h3>
-          <p className="mt-2 text-sm text-gray-600">{message}</p>
+    // 1. BACKDROP (Darkens the screen)
+    <div 
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 transition-opacity"
+        onClick={onClose} // Close if clicking outside
+    >
+      {/* 2. MODAL BOX (The actual white card) */}
+      <div 
+          className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 transform transition-all scale-100 border border-gray-100 dark:border-gray-700 relative"
+          onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+      >
+        
+        {/* Title */}
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+          {title}
+        </h3>
+
+        {/* Message Body */}
+        <div className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
+          {message}
         </div>
-        <div className="bg-gray-50 px-6 py-3 flex justify-end gap-3 rounded-b-lg">
+
+        {/* Buttons */}
+        <div className="flex justify-end gap-3 pt-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-white text-gray-700 font-semibold rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors"
-            aria-label={t('alertsTable.cancelButton')}
+            className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300"
           >
-            {t('alertsTable.cancelButton')}
+            Cancel
           </button>
+          
           <button
             onClick={onConfirm}
-            className="px-4 py-2 bg-brand-primary text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-            aria-label={t('alertsTable.confirmButton')}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-md transition-transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
           >
-            {t('alertsTable.confirmButton')}
+            Confirm
           </button>
         </div>
       </div>

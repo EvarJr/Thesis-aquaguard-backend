@@ -1,17 +1,21 @@
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 
+// Setup window object
+declare global {
+    interface Window {
+        Pusher: any;
+        Echo: any;
+    }
+}
+
 window.Pusher = Pusher;
 
 const echo = new Echo({
     broadcaster: 'pusher',
     key: import.meta.env.VITE_PUSHER_APP_KEY,
     cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER,
-    forceTLS: true, // ✅ Required for production Pusher
-    // ❌ REMOVE enabledTransports. Let Pusher negotiate the best connection.
-    // ❌ REMOVE disableStats. Let Pusher help debug connection issues.
+    forceTLS: true, // ✅ IMPORTANT: Always true for cloud
 });
-
-window.Echo = echo;
 
 export default echo;

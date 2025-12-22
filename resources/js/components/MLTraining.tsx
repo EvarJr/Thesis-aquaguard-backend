@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Pipeline } from '@/types'; // ✅ Import Pipeline Type
+import { User, Pipeline } from '@/types';
 import {
   fetchMLModelInfo,
   startTrainingProcess,
@@ -10,7 +10,7 @@ import {
   collectLabeledData,
   fetchAllModels,
   activateModelVersion,
-  fetchPipelines // ✅ Import Pipeline Fetcher
+  fetchPipelines
 } from '@/services/apiService';
 import {
   PlayIcon,
@@ -19,46 +19,50 @@ import {
   CheckCircleIcon,
 } from '@/components/icons/IconComponents';
 import { useTranslation } from '@/i18n';
+import echo from '@/lib/echo'; 
 
 interface MLTrainingProps {
   user: User;
 }
 
-declare global {
-    interface Window { Echo: any; }
-}
-
 const MLTraining: React.FC<MLTrainingProps> = ({ user }) => {
   const { t } = useTranslation();
   
+  // State
   const [modelInfo, setModelInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
   const [isTraining, setIsTraining] = useState(false);
 
+  // Settings
   const [autoMode, setAutoMode] = useState('manual');
   const [threshold, setThreshold] = useState(100);
   
-  // Live Data & Pipelines
+  // Live Data & Collector
   const [liveData, setLiveData] = useState<any>(null);
   const [collecting, setCollecting] = useState(false);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]); // ✅ List of pipelines from DB
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string>(''); // ✅ Selected Pipe
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
 
+  // Model Management
   const [allModels, setAllModels] = useState<any[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
 
   useEffect(() => {
     loadInitialData();
     
-    if (window.Echo) {
-        const channel = window.Echo.channel('sensors');
+    // ✅ REAL-TIME LISTENER
+    if (echo) {
+        const channel = echo.channel('sensors');
         channel.listen('.sensor.updated', (event: any) => {
             const data = event.data || event;
             setLiveData(data);
         });
-        return () => { window.Echo.leave('sensors'); };
+
+        return () => { 
+            echo.leave('sensors'); 
+        };
     }
   }, []);
 
@@ -76,6 +80,7 @@ const MLTraining: React.FC<MLTrainingProps> = ({ user }) => {
       setAutoMode(settings.mode);
       setThreshold(settings.target);
 
+      // Load Models
       const modelsData = await fetchAllModels();
       const list = modelsData.models || []; 
       setAllModels(list);
@@ -83,12 +88,11 @@ const MLTraining: React.FC<MLTrainingProps> = ({ user }) => {
       const active = list.find((m: any) => m.status === 'ACTIVE');
       if (active) setSelectedModelId(String(active.id));
 
-      // ✅ LOAD REAL PIPELINES FROM DB
+      // Load Pipelines
       const pipes = await fetchPipelines();
       setPipelines(pipes);
-      // Optional: Default to first pipeline if available
-      // if (pipes.length > 0) setSelectedPipelineId(pipes[0].id);
 
+      // Check Training Status
       const currentProgress = await fetchTrainingProgress();
       if (currentProgress.status === 'training') {
         setIsTraining(true);
@@ -128,11 +132,11 @@ const MLTraining: React.FC<MLTrainingProps> = ({ user }) => {
     alert("Settings Saved!");
   };
 
-  // ✅ LOGIC: Handle "Safe" vs "Leak"
+  // ✅ SUPERVISED LEARNING LOGIC
   const handleLabelData = async (label: 'safe' | 'leak') => {
       if (!liveData) return;
       
-      // If reporting a leak, user MUST select a pipeline first
+      // Validation
       if (label === 'leak' && !selectedPipelineId) {
           alert("Please select the affected pipeline from the list first.");
           return;
@@ -140,15 +144,17 @@ const MLTraining: React.FC<MLTrainingProps> = ({ user }) => {
 
       setCollecting(true);
       try {
-          // If Safe, pipelineId is null. If Leak, use selected pipeline.
-          const pipelineToSend = label === 'leak' ? selectedPipelineId : null;
+          // If safe, pipeline is null. If leak, use selected ID.
+          // Explicitly cast null to string | null to satisfy TypeScript if needed
+          const pipelineToSend: string | null = label === 'leak' ? selectedPipelineId : null;
           
           await collectLabeledData(liveData, label, pipelineToSend);
           
-          setStatusMessage(`✅ Recorded: ${label.toUpperCase()} ${pipelineToSend ? `on ${pipelineToSend}` : ''}`);
+          setStatusMessage(`✅ Recorded: ${label.toUpperCase()}`);
           setTimeout(() => setStatusMessage(''), 2000);
       } catch (e) {
           console.error(e);
+          alert("Failed to save data point.");
       } finally {
           setCollecting(false);
       }
@@ -171,36 +177,41 @@ const MLTraining: React.FC<MLTrainingProps> = ({ user }) => {
   return (
     <div className="space-y-6">
       
-      {/* 1. SUPERVISED COLLECTOR (The "Teacher" Interface) */}
+      {/* 1. SUPERVISED COLLECTOR */}
       <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-blue-500">
         <h3 className="text-lg font-bold text-brand-dark mb-4 flex items-center gap-2">
             📡 Supervised Data Collector (Live Training)
         </h3>
         <p className="text-sm text-gray-600 mb-4">
-            Watch the live readings. If you create a physical leak, select the pipeline and report it. If the system is normal, mark it as safe.
+            Watch the live readings. If you create a physical leak, select the pipeline and report it.
         </p>
 
         {liveData ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Left: Live Readings */}
                 <div className="bg-gray-100 p-4 rounded-lg font-mono text-sm shadow-inner">
-                    <div className="flex justify-between border-b border-gray-200 pb-1 mb-1">
-                        <span>Pressure (Main):</span> <span className="font-bold text-blue-600">{Number(liveData.p_main).toFixed(2)} PSI</span>
-                    </div>
-                    <div className="flex justify-between border-b border-gray-200 pb-1 mb-1">
-                        <span>Flow (Main):</span> <span className="font-bold text-blue-600">{Number(liveData.f_main).toFixed(2)} L/m</span>
-                    </div>
-                    <div className="flex justify-between border-b border-gray-200 pb-1 mb-1">
-                        <span>Pressure (DMA1):</span> <span className="font-bold text-purple-600">{Number(liveData.p_dma1).toFixed(2)} PSI</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Flow (DMA1):</span> <span className="font-bold text-purple-600">{Number(liveData.f_1).toFixed(2)} L/m</span>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <div className="text-gray-500 text-xs">Main Pipe</div>
+                            <div className="font-bold text-blue-700">{Number(liveData.p_main).toFixed(1)} PSI / {Number(liveData.f_main).toFixed(1)} L/m</div>
+                        </div>
+                        <div>
+                            <div className="text-gray-500 text-xs">DMA-1</div>
+                            <div className="font-bold text-purple-700">{Number(liveData.p_dma1).toFixed(1)} PSI / {Number(liveData.f_1).toFixed(1)} L/m</div>
+                        </div>
+                        <div>
+                            <div className="text-gray-500 text-xs">DMA-2</div>
+                            <div className="font-bold text-teal-700">{Number(liveData.p_dma2).toFixed(1)} PSI / {Number(liveData.f_2).toFixed(1)} L/m</div>
+                        </div>
+                        <div>
+                            <div className="text-gray-500 text-xs">DMA-3</div>
+                            <div className="font-bold text-orange-700">{Number(liveData.p_dma3).toFixed(1)} PSI / {Number(liveData.f_3).toFixed(1)} L/m</div>
+                        </div>
                     </div>
                 </div>
 
-                {/* Right: Teacher Controls */}
+                {/* Right: Controls */}
                 <div className="flex flex-col gap-3">
-                    {/* Green Button: Everything is OK */}
                     <button 
                         onClick={() => handleLabelData('safe')}
                         disabled={collecting}
@@ -211,23 +222,18 @@ const MLTraining: React.FC<MLTrainingProps> = ({ user }) => {
                     </button>
                     
                     <div className="relative border-t pt-3 mt-1">
-                        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Report Specific Leak</p>
                         <div className="flex gap-2">
-                            {/* Pipeline Selector (From Database) */}
                             <select 
                                 value={selectedPipelineId}
                                 onChange={(e) => setSelectedPipelineId(e.target.value)}
                                 className="flex-1 p-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-red-500 outline-none"
                             >
-                                <option value="" disabled>Select Affected Pipeline</option>
+                                <option value="" disabled>Select Pipeline</option>
                                 {pipelines.map(p => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.id} ({p.from} → {p.to})
-                                    </option>
+                                    <option key={p.id} value={p.id}>{p.id} ({p.from} → {p.to})</option>
                                 ))}
                             </select>
 
-                            {/* Red Button: Report Leak */}
                             <button 
                                 onClick={() => handleLabelData('leak')} 
                                 disabled={collecting || !selectedPipelineId} 
@@ -242,7 +248,6 @@ const MLTraining: React.FC<MLTrainingProps> = ({ user }) => {
         ) : (
             <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-lg border border-dashed">
                 <div className="animate-pulse">Waiting for live sensor data...</div>
-                <div className="text-xs mt-2">Ensure simulator or ESP32 is running.</div>
             </div>
         )}
       </div>
@@ -311,7 +316,6 @@ const MLTraining: React.FC<MLTrainingProps> = ({ user }) => {
           {isTraining && <span className="text-blue-600 font-bold animate-pulse">{t('mlTraining.trainingInProgress')}</span>}
         </div>
 
-        {/* Progress Bar */}
         {isTraining && (
           <div className="mb-6">
             <div className="w-full bg-gray-200 rounded-full h-4 mb-2">
@@ -328,43 +332,9 @@ const MLTraining: React.FC<MLTrainingProps> = ({ user }) => {
             isTraining ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-primary hover:bg-blue-700 shadow-lg hover:shadow-xl'
           }`}
         >
-          {isTraining ? (
-            <CpuChipIcon className="w-6 h-6 animate-spin" />
-          ) : (
-            <PlayIcon className="w-6 h-6" />
-          )}
+          {isTraining ? <CpuChipIcon className="w-6 h-6 animate-spin" /> : <PlayIcon className="w-6 h-6" />}
           {isTraining ? t('mlTraining.trainingButton') + '...' : t('mlTraining.startTrainingButton')}
         </button>
-      </div>
-
-      {/* 5. CONFIGURATION */}
-      <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-        <h3 className="font-bold text-gray-700 mb-4">⚙️ Auto-Training Configuration</h3>
-        <div className="flex flex-col md:flex-row gap-4 items-end">
-            <div className="flex-1">
-                <label className="block text-sm font-bold text-gray-600 mb-1">Training Mode</label>
-                <select 
-                    value={autoMode} 
-                    onChange={(e) => setAutoMode(e.target.value)}
-                    className="w-full p-2 border rounded"
-                >
-                    <option value="manual">Manual Only</option>
-                    <option value="auto">Automatic (Data Threshold)</option>
-                </select>
-            </div>
-            <div className="flex-1">
-                <label className="block text-sm font-bold text-gray-600 mb-1">Data Threshold (Rows)</label>
-                <input 
-                    type="number" 
-                    value={threshold} 
-                    onChange={(e) => setThreshold(Number(e.target.value))}
-                    className="w-full p-2 border rounded"
-                />
-            </div>
-            <button onClick={handleSaveSettings} className="bg-gray-700 hover:bg-gray-800 text-white px-6 py-2 rounded font-bold">
-                Save Config
-            </button>
-        </div>
       </div>
     </div>
   );

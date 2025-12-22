@@ -83,7 +83,7 @@ const translations = {
         loading: 'Loading alerts...',
         noAlerts: 'No active alerts. System is normal.',
         sensorLabel: 'Sensor',
-        affectedPipeline: 'Affected Pipeline',
+        affectedPipeline: 'Pipe',
         analyzeButton: 'Analyze',
         resolveButton: 'Resolve',
         falseAlertButton: 'False Alert',
@@ -94,17 +94,17 @@ const translations = {
         cancelButton: 'Cancel',
         confirmButton: 'Confirm',
         timeAgo: {
-            year: '{{count}} year ago',
-            years: '{{count}} years ago',
-            month: '{{count}} month ago',
-            months: '{{count}} months ago',
-            day: '{{count}} day ago',
-            days: '{{count}} days ago',
-            hour: '{{count}} hour ago',
-            hours: '{{count}} hours ago',
-            minute: '{{count}} minute ago',
-            minutes: '{{count}} minutes ago',
-            second: 'a few seconds ago',
+            year: '{{count}}y ago',
+            years: '{{count}}y ago',
+            month: '{{count}}mo ago',
+            months: '{{count}}mo ago',
+            day: '{{count}}d ago',
+            days: '{{count}}d ago',
+            hour: '{{count}}h ago',
+            hours: '{{count}}h ago',
+            minute: '{{count}}m ago',
+            minutes: '{{count}}m ago',
+            second: 'Just now',
         }
     },
     historyChart: {
@@ -231,6 +231,7 @@ const translations = {
         communityHub: 'Community Hub',
         adminDiscussions: 'Admin Discussions',
         newTopic: 'New Topic',
+        editTopic: 'Edit Topic', 
         by: 'By',
         noTopics: 'No topics in this category yet.',
         loadingTopics: 'Loading topics...',
@@ -239,9 +240,14 @@ const translations = {
         topicTitle: 'Topic Title',
         yourMessage: 'Your Message',
         createTopic: 'Create Topic',
+        saveChanges: 'Save Changes', 
         cancel: 'Cancel',
         yourReply: 'Your Reply...',
         postReply: 'Post Reply',
+        confirmDelete: 'Are you sure you want to delete this topic?', 
+        general: 'General',
+        alerts: 'Alerts',
+        maintenance: 'Maintenance'
     },
     mlTraining: {
         title: 'Machine Learning Model',
@@ -253,6 +259,14 @@ const translations = {
         notTrained: 'N/A',
         startTrainingButton: 'Start Training Process',
         trainingInProgressButton: 'Training in Progress...',
+        
+        // ✅ ADDED MISSING KEYS
+        trainingButton: 'Training...',
+        trainingButtonLoading: 'Processing...',
+        trainingInProgress: 'Training in Progress...',
+        currentVersion: 'Current Version',
+        nextTraining: 'Next Training Trigger',
+        
         trainingLogTitle: 'Training Log',
         resultsTitle: 'Training Results',
         accuracy: 'Model Accuracy',
@@ -499,7 +513,7 @@ const translations = {
         nameLabel: 'Buong Pangalan',
         namePlaceholder: 'hal., Juan dela Cruz',
         emailLabel: 'Email Address',
-        emailPlaceholder: 'hal., user@example.com',
+        emailPlaceholder: 'e.g., user@example.com',
         roleLabel: 'Tungkulin',
         saveButton: 'I-save ang mga Pagbabago',
         addButton: 'Idagdag ang User',
@@ -514,6 +528,7 @@ const translations = {
         communityHub: 'Sentro ng Komunidad',
         adminDiscussions: 'Usapan ng mga Admin',
         newTopic: 'Bagong Paksa',
+        editTopic: 'I-edit ang Paksa', // ✅ Added
         by: 'Ni',
         noTopics: 'Wala pang mga paksa sa kategoryang ito.',
         loadingTopics: 'Nilo-load ang mga paksa...',
@@ -522,9 +537,14 @@ const translations = {
         topicTitle: 'Pamagat ng Paksa',
         yourMessage: 'Ang Iyong Mensahe',
         createTopic: 'Gumawa ng Paksa',
+        saveChanges: 'I-save ang Pagbabago', // ✅ Added
         cancel: 'Kanselahin',
         yourReply: 'Ang iyong tugon...',
         postReply: 'I-post ang Tugon',
+        confirmDelete: 'Sigurado ka bang gusto mong tanggalin ang paksang ito?', // ✅ Added
+        general: 'Pangkalahatan',
+        alerts: 'Mga Alerto',
+        maintenance: 'Pagpapanatili'
     },
     mlTraining: {
         title: 'Machine Learning Model',
@@ -536,6 +556,14 @@ const translations = {
         notTrained: 'N/A',
         startTrainingButton: 'Simulan ang Pagsasanay',
         trainingInProgressButton: 'Kasalukuyang Nagsasanay...',
+        
+        // ✅ ADDED MISSING KEYS for Filipino translation
+        trainingButton: 'Nagsasanay...', 
+        trainingButtonLoading: 'Pinoproseso...',
+        trainingInProgress: 'Kasalukuyang Nagsasanay...',
+        currentVersion: 'Kasalukuyang Bersyon',
+        nextTraining: 'Susunod na Pagsasanay',
+        
         trainingLogTitle: 'Log ng Pagsasanay',
         resultsTitle: 'Mga Resulta ng Pagsasanay',
         accuracy: 'Katumpakan ng Modelo',

@@ -7,7 +7,7 @@ from datetime import datetime
 # ==========================================
 # ⚙️ CONFIGURATION
 # ==========================================
-API_URL = "http://127.0.0.1:8000/api/sensor-data"
+API_URL = "http://217.216.32.69/api/sensor-data"
 DELAY_SECONDS = 2  # Fast updates
 
 def generate_system_state(sequence_id):

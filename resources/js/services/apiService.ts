@@ -259,11 +259,28 @@ export const fetchActiveAlerts = async (): Promise<Alert[]> =>
 export const fetchAllAlerts = async (): Promise<Alert[]> =>
   (await api.get('/api/alerts?all=true')).data;
 
-export const resolveAlert = async (alertId: string): Promise<Alert> =>
-  (await api.post(`/api/alerts/${alertId}/resolve`)).data;
+// ✅ UPDATED: Accepts optional actualPipelineId
+export const resolveAlert = async (alertId: string, actualPipelineId?: string): Promise<Alert> => {
+  const payload = actualPipelineId ? { actual_pipeline_id: actualPipelineId } : {};
+  return (await api.post(`/api/alerts/${alertId}/resolve`, payload)).data;
+};
+
+// ✅ UPDATED: Accepts optional actualPipelineId
+export const resolveAlertGroup = async (alertIds: string[], actualPipelineId?: string): Promise<void> => {
+  const payload = { 
+      alert_ids: alertIds, 
+      actual_pipeline_id: actualPipelineId 
+  };
+  await api.post('/api/alerts/resolve-group', payload);
+};
 
 export const markAlertAsFalse = async (alertId: string): Promise<Alert> =>
   (await api.post(`/api/alerts/${alertId}/mark-false`)).data;
+
+// ✅ Ensure this exists for the Yellow button
+export const markAlertGroupAsFalse = async (alertIds: string[]): Promise<void> => {
+  await api.post('/api/alerts/mark-false-group', { alert_ids: alertIds });
+};
 
 // ======================================================
 // 🧩 SENSOR DATA
